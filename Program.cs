@@ -1,16 +1,17 @@
+using Backend.Data;
 using Backend.Services;
+using Backend.Helpers;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
+using System.Text;
+using Pomelo.EntityFrameworkCore.MySql.Infrastructure; // For MySQL
 
 var builder = WebApplication.CreateBuilder(args);
 
 // Add services to the container.
-
 builder.Services.AddControllers();
-// Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi
-builder.Services.AddOpenApi();
-builder.Services.AddScoped<EmailService>();
-builder.Services.AddScoped<HotelService>();
-
 
 // ========== SWAGGER CONFIGURATION ==========
 builder.Services.AddEndpointsApiExplorer();
@@ -34,7 +35,7 @@ builder.Services.AddSwaggerGen(c =>
         }
     });
 
-    // Optional: Add JWT Authentication support in Swagger
+    // JWT Authentication support in Swagger
     c.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
     {
         Name = "Authorization",
@@ -56,6 +57,45 @@ builder.Services.AddSwaggerGen(c =>
     });
 });
 
+// ========== DATABASE CONTEXT (MySQL) ==========
+var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
+builder.Services.AddDbContext<ApplicationDbContext>(options =>
+    options.UseMySql(connectionString, ServerVersion.AutoDetect(connectionString)));
+
+// ========== JWT AUTHENTICATION ==========
+var jwtKey = builder.Configuration["Jwt:Key"] ?? "YourSuperSecretKeyThatIsAtLeast32CharactersLong!";
+var jwtIssuer = builder.Configuration["Jwt:Issuer"] ?? "LuxuryHotelBooking";
+var jwtAudience = builder.Configuration["Jwt:Audience"] ?? "LuxuryHotelBookingClient";
+
+builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+    .AddJwtBearer(options =>
+    {
+        options.TokenValidationParameters = new TokenValidationParameters
+        {
+            ValidateIssuer = true,
+            ValidateAudience = true,
+            ValidateLifetime = true,
+            ValidateIssuerSigningKey = true,
+            ValidIssuer = jwtIssuer,
+            ValidAudience = jwtAudience,
+            IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtKey))
+        };
+    });
+
+// ========== SERVICE REGISTRATIONS ==========
+// Member A
+builder.Services.AddScoped<EmailService>();
+// builder.Services.AddScoped<AuthService>(); // Uncomment when AuthService is ready
+
+// Member B
+builder.Services.AddScoped<HotelService>();
+
+// Member C
+builder.Services.AddScoped<PaymentService>();
+builder.Services.AddScoped<PromotionService>();
+builder.Services.AddScoped<BookingService>();
+builder.Services.AddScoped<DiscountCalculator>();
+
 var app = builder.Build();
 
 // Configure the HTTP request pipeline.
@@ -65,12 +105,12 @@ if (app.Environment.IsDevelopment())
     app.UseSwaggerUI(c =>
     {
         c.SwaggerEndpoint("/swagger/v1/swagger.json", "Luxury Hotel Booking API v1");
-        c.RoutePrefix = "swagger"; // makes Swagger UI available at /swagger
+        c.RoutePrefix = "swagger";
     });
 }
 
-app.UseAuthentication(); // if you have JWT auth
 app.UseHttpsRedirection();
+app.UseAuthentication(); // Enable JWT
 app.UseAuthorization();
 
 app.MapControllers();
