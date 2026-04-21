@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Backend.DTOs;
 using Backend.Helpers;
+using Backend.Data;
 
 namespace Backend.Services
 {
