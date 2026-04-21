@@ -3,6 +3,7 @@ using System.Net;
 using System.Net.Mail;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Configuration;
+using Microsoft.EntityFrameworkCore;
 using Backend.DTOs;
 
 namespace Backend.Services
@@ -15,8 +16,9 @@ namespace Backend.Services
         private readonly string _smtpPassword;
         private readonly string _fromEmail;
         private readonly string _fromName;
+        private readonly ApplicationDbContext _context;
 
-        public EmailService(IConfiguration configuration)
+        public EmailService(IConfiguration configuration, ApplicationDbContext context)
         {
             _smtpServer = configuration["Email:SmtpServer"] ?? "smtp.gmail.com";
             _smtpPort = int.Parse(configuration["Email:SmtpPort"] ?? "587");
@@ -24,9 +26,124 @@ namespace Backend.Services
             _smtpPassword = configuration["Email:Password"] ?? throw new Exception("Email password not configured");
             _fromEmail = configuration["Email:FromEmail"] ?? _smtpUsername;
             _fromName = configuration["Email:FromName"] ?? "Luxury Hotel Booking";
+            _context = context;
         }
 
-        // Core send method
+        // ==================== NEW METHODS FOR BOOKINGSERVICE ====================
+
+        /// <summary>
+        /// Sends a booking confirmation email using the booking ID and user email.
+        /// Fetches all required data from the database.
+        /// </summary>
+        public async Task<bool> SendBookingConfirmationAsync(int bookingId, string userEmail)
+        {
+            try
+            {
+                var booking = await _context.Bookings
+                    .Include(b => b.User)
+                    .Include(b => b.Room)
+                        .ThenInclude(r => r.Hotel)
+                    .Include(b => b.Room)
+                        .ThenInclude(r => r.RoomCategory)
+                    .FirstOrDefaultAsync(b => b.Id == bookingId);
+
+                if (booking == null)
+                {
+                    Console.WriteLine($"Booking {bookingId} not found for email confirmation.");
+                    return false;
+                }
+
+                var user = booking.User;
+                var room = booking.Room;
+                var hotel = room?.Hotel;
+                var category = room?.RoomCategory;
+
+                var emailData = new BookingEmailData
+                {
+                    BookingReference = booking.BookingReference,
+                    HotelName = hotel?.Name ?? "Hotel",
+                    RoomNumber = room?.RoomNumber ?? "N/A",
+                    RoomCategory = category?.Name ?? "Standard",
+                    CheckInDate = booking.CheckInDate,
+                    CheckOutDate = booking.CheckOutDate,
+                    NumberOfGuests = booking.NumberOfGuests,
+                    TotalPrice = booking.TotalPrice,
+                    FinalPrice = booking.FinalPrice,
+                    LoyaltyPointsEarned = booking.LoyaltyPointsEarned,
+                    SpecialRequests = booking.SpecialRequests ?? ""
+                };
+
+                var fullName = $"{user?.FirstName} {user?.LastName}".Trim();
+                if (string.IsNullOrWhiteSpace(fullName)) fullName = userEmail;
+
+                return await SendEmailAsync(new EmailRequestDto
+                {
+                    ToEmail = userEmail,
+                    ToName = fullName,
+                    Type = EmailType.BookingConfirmation,
+                    Data = emailData
+                });
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error sending booking confirmation email: {ex.Message}");
+                return false;
+            }
+        }
+
+        /// <summary>
+        /// Sends a booking cancellation email using user email and booking reference.
+        /// Fetches required data from the database.
+        /// </summary>
+        public async Task<bool> SendBookingCancellationAsync(string userEmail, string bookingReference)
+        {
+            try
+            {
+                var booking = await _context.Bookings
+                    .Include(b => b.User)
+                    .Include(b => b.Room)
+                        .ThenInclude(r => r.Hotel)
+                    .FirstOrDefaultAsync(b => b.BookingReference == bookingReference);
+
+                if (booking == null)
+                {
+                    Console.WriteLine($"Booking with reference {bookingReference} not found for cancellation email.");
+                    return false;
+                }
+
+                var user = booking.User;
+                var hotel = booking.Room?.Hotel;
+
+                var cancelData = new CancellationEmailData
+                {
+                    BookingReference = booking.BookingReference,
+                    HotelName = hotel?.Name ?? "Hotel",
+                    CheckInDate = booking.CheckInDate,
+                    CheckOutDate = booking.CheckOutDate,
+                    RefundAmount = booking.FinalPrice,
+                    CancellationReason = booking.CancellationReason ?? ""
+                };
+
+                var fullName = $"{user?.FirstName} {user?.LastName}".Trim();
+                if (string.IsNullOrWhiteSpace(fullName)) fullName = userEmail;
+
+                return await SendEmailAsync(new EmailRequestDto
+                {
+                    ToEmail = userEmail,
+                    ToName = fullName,
+                    Type = EmailType.BookingCancellation,
+                    Data = cancelData
+                });
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error sending cancellation email: {ex.Message}");
+                return false;
+            }
+        }
+
+        // ==================== ORIGINAL SEND METHOD ====================
+
         public async Task<bool> SendEmailAsync(EmailRequestDto request)
         {
             try
@@ -54,13 +171,13 @@ namespace Backend.Services
             }
             catch (Exception ex)
             {
-                // Log exception here (use ILogger in real app)
                 Console.WriteLine($"Email sending failed: {ex.Message}");
                 return false;
             }
         }
 
-        // Convenience methods
+        // ==================== ORIGINAL CONVENIENCE METHODS (with full data) ====================
+
         public async Task<bool> SendBookingConfirmationAsync(string email, string name, BookingEmailData data)
         {
             return await SendEmailAsync(new EmailRequestDto
@@ -127,7 +244,8 @@ namespace Backend.Services
             });
         }
 
-        // Private helpers
+        // ==================== PRIVATE HELPERS ====================
+
         private string GetSubject(EmailType type)
         {
             return type switch
@@ -155,6 +273,8 @@ namespace Backend.Services
                 _ => "<p>Thank you for using our service.</p>"
             };
         }
+
+        // ==================== HTML TEMPLATES ====================
 
         private string BuildBookingConfirmationEmail(BookingEmailData data)
         {
