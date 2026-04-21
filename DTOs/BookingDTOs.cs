@@ -44,6 +44,7 @@ namespace Backend.DTOs
         public string BillingAddress { get; set; }
 
         public string UpiId { get; set; }
+        public string Email { get; set; }
     }
 
     public class BookingResponseDto
@@ -169,24 +170,5 @@ namespace Backend.DTOs
         public decimal TotalPrice { get; set; }
         public List<string> Amenities { get; set; }
     }
-
-    public class EmailConfirmationDto
-    {
-        public int BookingId { get; set; }
-        public string RecipientEmail { get; set; }
-        public string ConfirmationNumber { get; set; }
-        public DateTime SentAt { get; set; }
-        public bool IsDelivered { get; set; }
-        public string EmailContent { get; set; }
-    }
-
-    public class ResendConfirmationDto
-    {
-        [Required]
-        public int BookingId { get; set; }
-
-        [Required]
-        [EmailAddress]
-        public string Email { get; set; }
-    }
+    
 }
