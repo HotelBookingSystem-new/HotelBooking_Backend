@@ -22,6 +22,8 @@ namespace Backend.DTOs
 
     public class BookingEmailData
     {
+        internal int BookingId;
+
         public string BookingReference { get; set; } = string.Empty;
         public string HotelName { get; set; } = string.Empty;
         public string RoomNumber { get; set; } = string.Empty;
