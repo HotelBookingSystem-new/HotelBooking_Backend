@@ -3,7 +3,6 @@ using Microsoft.AspNetCore.Mvc;
 using System.Security.Claims;
 using Backend.DTOs;
 using Backend.Services;
-using System.Reflection.Metadata.Ecma335;
 
 namespace Backend.Controllers
 {
@@ -29,10 +28,9 @@ namespace Backend.Controllers
                 var userId = int.Parse(User.FindFirst(ClaimTypes.NameIdentifier)?.Value);
                 var result = await _bookingService.CreateBookingAsync(userId, request);
 
-                if (result.Success)
-                    return Ok(result);
+                
 
-                return BadRequest(result);
+                return result==null?BadRequest(result):Ok(result);
             }
             catch (Exception ex)
             {
@@ -85,9 +83,9 @@ namespace Backend.Controllers
                 var userId = int.Parse(User.FindFirst(ClaimTypes.NameIdentifier)?.Value);
                 var result = await _bookingService.CancelBookingAsync(request.BookingId, userId, request.CancellationReason);
 
-               
 
-                return result.Success?  Ok(result): BadRequest(result);
+
+                return result == null ? BadRequest(result) : Ok(result);
             }
             catch (Exception ex)
             {
@@ -104,10 +102,7 @@ namespace Backend.Controllers
                 var userId = int.Parse(User.FindFirst(ClaimTypes.NameIdentifier)?.Value);
                 var result = await _bookingService.RebookAsync(userId, request);
 
-                if (result.Success)
-                    return Ok(result);
-
-                return BadRequest(result);
+                return result == null ? BadRequest(result) : Ok(result);
             }
             catch (Exception ex)
             {
@@ -156,10 +151,7 @@ namespace Backend.Controllers
                 var userId = int.Parse(User.FindFirst(ClaimTypes.NameIdentifier)?.Value);
                 var result = await _bookingService.ResendConfirmationEmailAsync(bookingId, userId);
 
-                if (result.Success)
-                    return Ok(result);
-
-                return BadRequest(result);
+                return result == null ? BadRequest(result) : Ok(result);
             }
             catch (Exception ex)
             {
