@@ -1,7 +1,7 @@
-﻿using Backend.Models;
+﻿using HotelManagement.Models;
 using Microsoft.EntityFrameworkCore;
 
-namespace Backend.Data
+namespace HotelManagement.Data
 {
     /// <summary>
     /// Primary DbContext. Member A owns this file and the base configuration.

@@ -2,7 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
 
-namespace Backend.DTOs
+namespace HotelManagement.DTOs
 {
     public class SearchFilterDto
     {

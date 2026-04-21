@@ -1,10 +1,10 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using System.Security.Claims;
-using Backend.DTOs;
-using Backend.Services;
+using HotelManagement.DTOs;
+using HotelManagement.Services;
 
-namespace Backend.Controllers
+namespace HotelManagement.Controllers
 {
     [ApiController]
     [Route("api/[controller]")]

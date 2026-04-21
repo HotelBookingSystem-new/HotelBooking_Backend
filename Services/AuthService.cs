@@ -1,13 +1,13 @@
 ﻿using System;
 using System.Threading.Tasks;
-using Backend.Data;
-using Backend.DTOs;
-using Backend.Helpers;
-using Backend.Models;
+using HotelManagement.Data;
+using HotelManagement.DTOs;
+using HotelManagement.Helpers;
+using HotelManagement.Models;
 using Microsoft.EntityFrameworkCore;
 using BCrypt.Net;
 
-namespace Backend.Services
+namespace HotelManagement.Services
 {
     public interface IAuthService
     {

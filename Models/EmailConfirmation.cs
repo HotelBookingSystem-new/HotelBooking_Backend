@@ -1,6 +1,6 @@
 using System;
 
-namespace Backend.Models
+namespace HotelManagement.Models
 {
     public class EmailConfirmation
     {

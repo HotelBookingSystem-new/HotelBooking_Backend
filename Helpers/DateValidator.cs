@@ -1,6 +1,6 @@
 using System;
 
-namespace Backend.Helpers
+namespace HotelManagement.Helpers
 {
     public static class DateValidator
     {

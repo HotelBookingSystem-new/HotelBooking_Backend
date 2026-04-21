@@ -4,11 +4,11 @@ using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Security.Cryptography;
 using System.Text;
-using Backend.Models;
+using HotelManagement.Models;
 using Microsoft.Extensions.Configuration;
 using Microsoft.IdentityModel.Tokens;
 
-namespace Backend.Helpers
+namespace HotelManagement.Helpers
 {
     public interface IJwtHelper
     {

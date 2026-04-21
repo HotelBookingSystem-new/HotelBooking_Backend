@@ -1,4 +1,4 @@
-namespace Backend.Helpers
+namespace HotelManagement.Helpers
 {
     public class DiscountCalculator
     {

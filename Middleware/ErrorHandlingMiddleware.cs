@@ -1,118 +1,164 @@
-﻿using System;
-using System.Collections.Concurrent;
-using System.Net;
+﻿using System.Net;
 using System.Text.Json;
-using System.Threading.Tasks;
+using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
 
-namespace Backend.Middleware
+namespace HotelManagement.Middleware
 {
     /// <summary>
-    /// Custom in-memory rate-limiting middleware that complements the ASP.NET Core
-    /// built-in RateLimiter (registered in Program.cs via RateLimitingHelper).
-    /// This layer adds per-IP tracking with configurable rules and detailed logging.
+    /// Global exception-handling middleware.
+    /// Catches all unhandled exceptions and returns a structured JSON error response.
+    /// Must be registered FIRST in Program.cs so it wraps the entire pipeline.
     ///
-    /// Usage: app.UseMiddleware&lt;RateLimitingMiddleware&gt;();
-    ///        — Place BEFORE app.UseRateLimiter() in Program.cs pipeline.
+    /// Usage: app.UseMiddleware&lt;ErrorHandlingMiddleware&gt;();
     /// </summary>
-    public class RateLimitingMiddleware
+    public class ErrorHandlingMiddleware
     {
         private readonly RequestDelegate _next;
-        private readonly ILogger<RateLimitingMiddleware> _logger;
+        private readonly ILogger<ErrorHandlingMiddleware> _logger;
+        private readonly IWebHostEnvironment _env;
 
-        // Thread-safe store: IP → (request count, window start)
-        private static readonly ConcurrentDictionary<string, (int Count, DateTime WindowStart)> _store = new();
-
-        // Rules per path prefix
-        private static readonly Dictionary<string, (int Limit, TimeSpan Window)> _rules = new()
+        private static readonly JsonSerializerOptions _jsonOptions = new()
         {
-            { "/api/auth/login",    (10, TimeSpan.FromMinutes(1)) },
-            { "/api/auth/register", (5,  TimeSpan.FromMinutes(1)) },
-            { "/api/auth/forgot",   (3,  TimeSpan.FromMinutes(5)) },
-            { "/api/hotels/search", (30, TimeSpan.FromMinutes(1)) },
-            { "/api/bookings",      (20, TimeSpan.FromMinutes(1)) },
-            { "/api/",              (100,TimeSpan.FromMinutes(1)) }, // global fallback
+            PropertyNamingPolicy = JsonNamingPolicy.CamelCase
         };
 
-        public RateLimitingMiddleware(RequestDelegate next, ILogger<RateLimitingMiddleware> logger)
+        public ErrorHandlingMiddleware(
+            RequestDelegate next,
+            ILogger<ErrorHandlingMiddleware> logger,
+            IWebHostEnvironment env)
         {
             _next = next;
             _logger = logger;
+            _env = env;
         }
 
         public async Task InvokeAsync(HttpContext context)
         {
-            var ip = GetClientIp(context);
-            var path = context.Request.Path.Value?.ToLower() ?? string.Empty;
-
-            var (limit, window) = GetRule(path);
-            var key = $"{ip}:{GetRuleKey(path)}";
-
-            if (IsRateLimited(key, limit, window))
+            try
             {
-                _logger.LogWarning("Rate limit exceeded | IP: {IP} | Path: {Path}", ip, path);
+                await _next(context);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex,
+                    "Unhandled exception | Method: {Method} | Path: {Path} | TraceId: {TraceId}",
+                    context.Request.Method,
+                    context.Request.Path,
+                    context.TraceIdentifier);
 
-                context.Response.StatusCode = StatusCodes.Status429TooManyRequests;
-                context.Response.ContentType = "application/json";
-                context.Response.Headers.Append("Retry-After", window.TotalSeconds.ToString());
+                await HandleExceptionAsync(context, ex);
+            }
+        }
 
-                await context.Response.WriteAsync(JsonSerializer.Serialize(new
-                {
-                    success = false,
-                    message = "Too many requests. Please slow down and try again.",
-                    retryAfterSeconds = (int)window.TotalSeconds,
-                }));
+        // ── Exception → HTTP status mapping ──────────────────────────────────
+
+        private async Task HandleExceptionAsync(HttpContext context, Exception exception)
+        {
+            // Don't overwrite a response that has already started streaming
+            if (context.Response.HasStarted)
+            {
+                _logger.LogWarning("Response already started — cannot write error response.");
                 return;
             }
 
-            await _next(context);
+            var (statusCode, message, errorCode) = MapException(exception);
+
+            context.Response.Clear();
+            context.Response.StatusCode = statusCode;
+            context.Response.ContentType = "application/json";
+
+            var payload = new ErrorResponse
+            {
+                Success = false,
+                Message = message,
+                ErrorCode = errorCode,
+                StatusCode = statusCode,
+                TraceId = context.TraceIdentifier,
+                Timestamp = DateTime.UtcNow,
+                // Include stack trace only in Development
+                Detail = _env.IsDevelopment() ? exception.ToString() : null,
+            };
+
+            await context.Response.WriteAsync(
+                JsonSerializer.Serialize(payload, _jsonOptions));
         }
 
-        // ── Helpers ───────────────────────────────────────────────────────────
-
-        private static bool IsRateLimited(string key, int limit, TimeSpan window)
+        private static (int StatusCode, string Message, string ErrorCode) MapException(Exception exception)
         {
-            var now = DateTime.UtcNow;
+            return exception switch
+            {
+                // ── Auth & Authorization ──────────────────────────────────────
+                UnauthorizedAccessException =>
+                    (StatusCodes.Status401Unauthorized,
+                     "You are not authorized to perform this action.",
+                     "UNAUTHORIZED"),
 
-            _store.AddOrUpdate(key,
-                // add new entry
-                _ => (1, now),
-                // update existing
-                (_, existing) =>
-                {
-                    if (now - existing.WindowStart >= window)
-                        return (1, now);   // reset window
-                    return (existing.Count + 1, existing.WindowStart);
-                });
+                // ── Not Found ─────────────────────────────────────────────────
+                KeyNotFoundException e =>
+                    (StatusCodes.Status404NotFound,
+                     string.IsNullOrWhiteSpace(e.Message) ? "The requested resource was not found." : e.Message,
+                     "NOT_FOUND"),
 
-            return _store.TryGetValue(key, out var current) && current.Count > limit;
+                // ── Validation / Bad Input ────────────────────────────────────
+                ArgumentNullException e =>
+                    (StatusCodes.Status400BadRequest,
+                     $"A required value was missing: {e.ParamName}.",
+                     "BAD_REQUEST"),
+
+                ArgumentOutOfRangeException e =>
+                    (StatusCodes.Status400BadRequest,
+                     string.IsNullOrWhiteSpace(e.Message) ? "A value was out of the acceptable range." : e.Message,
+                     "BAD_REQUEST"),
+
+                ArgumentException e =>
+                    (StatusCodes.Status400BadRequest,
+                     string.IsNullOrWhiteSpace(e.Message) ? "Invalid request data." : e.Message,
+                     "BAD_REQUEST"),
+
+                // ── Conflict / Business Rule Violations ───────────────────────
+                InvalidOperationException e =>
+                    (StatusCodes.Status409Conflict,
+                     string.IsNullOrWhiteSpace(e.Message) ? "The operation is not valid in the current state." : e.Message,
+                     "CONFLICT"),
+
+                // ── Not Supported ─────────────────────────────────────────────
+                NotSupportedException e =>
+                    (StatusCodes.Status400BadRequest,
+                     string.IsNullOrWhiteSpace(e.Message) ? "This operation is not supported." : e.Message,
+                     "NOT_SUPPORTED"),
+
+                // ── Timeout ───────────────────────────────────────────────────
+                TimeoutException =>
+                    (StatusCodes.Status504GatewayTimeout,
+                     "The request timed out. Please try again.",
+                     "TIMEOUT"),
+
+                // ── Task Cancelled (client disconnect) ────────────────────────
+                OperationCanceledException =>
+                    (StatusCodes.Status499ClientClosedRequest,
+                     "The request was cancelled.",
+                     "REQUEST_CANCELLED"),
+
+                // ── Fallback ─ Internal Server Error ──────────────────────────
+                _ =>
+                    (StatusCodes.Status500InternalServerError,
+                     "An unexpected error occurred. Please try again later.",
+                     "INTERNAL_SERVER_ERROR"),
+            };
         }
 
-        private static string GetClientIp(HttpContext context)
+        // ── Response DTO ──────────────────────────────────────────────────────
+
+        private sealed class ErrorResponse
         {
-            // Respect reverse-proxy headers
-            var forwarded = context.Request.Headers["X-Forwarded-For"].FirstOrDefault();
-            if (!string.IsNullOrEmpty(forwarded))
-                return forwarded.Split(',')[0].Trim();
-
-            return context.Connection.RemoteIpAddress?.ToString() ?? "unknown";
-        }
-
-        private static (int Limit, TimeSpan Window) GetRule(string path)
-        {
-            foreach (var rule in _rules)
-                if (path.StartsWith(rule.Key, StringComparison.OrdinalIgnoreCase))
-                    return rule.Value;
-
-            return (100, TimeSpan.FromMinutes(1)); // safe default
-        }
-
-        private static string GetRuleKey(string path)
-        {
-            foreach (var rule in _rules)
-                if (path.StartsWith(rule.Key, StringComparison.OrdinalIgnoreCase))
-                    return rule.Key;
-            return "global";
+            public bool Success { get; set; }
+            public string Message { get; set; } = string.Empty;
+            public string ErrorCode { get; set; } = string.Empty;
+            public int StatusCode { get; set; }
+            public string TraceId { get; set; } = string.Empty;
+            public DateTime Timestamp { get; set; }
+            public string? Detail { get; set; }  // only populated in Development
         }
     }
 }

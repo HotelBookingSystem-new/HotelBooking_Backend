@@ -1,8 +1,8 @@
 ﻿using System.Text;
-using Backend.Data;
-using Backend.Helpers;
-using Backend.Middleware;
-using Backend.Services;
+using HotelManagement.Data;
+using HotelManagement.Helpers;
+using HotelManagement.Middleware;
+using HotelManagement.Services;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
@@ -103,10 +103,8 @@ builder.Services.AddScoped<IJwtHelper, JwtHelper>();
 // ═══════════════════════════════════════════════════════════════════════════
 builder.Services.AddCors(options =>
 {
-    options.AddPolicy("AllowFrontend", policy =>
-        policy.WithOrigins(
-                builder.Configuration["AppSettings:FrontendUrl"] ?? "http://localhost:3000",
-                "http://localhost:5173")   // Vite dev server
+    options.AddPolicy("AllowAngular", policy =>
+        policy.WithOrigins("http://localhost:4200")
               .AllowAnyHeader()
               .AllowAnyMethod()
               .AllowCredentials());

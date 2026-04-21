@@ -1,6 +1,6 @@
 ﻿using System;
 
-namespace Backend.DTOs
+namespace HotelManagement.DTOs
 {
     public class EmailRequestDto
     {

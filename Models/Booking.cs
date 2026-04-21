@@ -22,4 +22,5 @@ public class Booking
     public Room Room { get; set; }
     public Promotion Promotion { get; set; }
     public ICollection<Payment> Payments { get; set; }
+    public object EmailConfirmations { get; internal set; }
 }

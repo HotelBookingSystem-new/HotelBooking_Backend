@@ -2,7 +2,7 @@
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.Extensions.DependencyInjection;
 
-namespace Backend.Helpers
+namespace HotelManagement.Helpers
 {
     /// <summary>
     /// Central place to define and register all rate-limit policies.

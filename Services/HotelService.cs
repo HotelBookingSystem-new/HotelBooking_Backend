@@ -3,11 +3,11 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using Microsoft.EntityFrameworkCore;
-using Backend.DTOs;
-using Backend.Helpers;
-using Backend.Data;
+using HotelManagement.DTOs;
+using HotelManagement.Helpers;
+using HotelManagement.Data;
 
-namespace Backend.Services
+namespace HotelManagement.Services
 {
     public class HotelService
     {

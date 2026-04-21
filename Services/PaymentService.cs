@@ -1,8 +1,8 @@
 using Microsoft.EntityFrameworkCore;
-using Backend.DTOs;
-using Backend.Data;
+using HotelManagement.DTOs;
+using HotelManagement.Data;
 
-namespace Backend.Services
+namespace HotelManagement.Services
 {
     public class PaymentService
     {
